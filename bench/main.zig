@@ -2,7 +2,7 @@ const std = @import("std");
 const zm = @import("zmetrics");
 const zbench = @import("zbench");
 
-var pcg = zm.Pcgrng.init(21343234);
+var pcg = zm.rand.Pcgrng.init(21343234);
 var rng = pcg.randomGen();
 
 var u32_buf: [1000]u32 = undefined;

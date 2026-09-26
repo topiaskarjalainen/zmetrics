@@ -110,6 +110,9 @@ pub fn build(b: *std.Build) void {
     bench.root_module.addImport("zbench", zbench_module);
 
     b.installArtifact(bench);
+    const run_bench = b.addRunArtifact(bench);
+    const run_bench_step = b.step("run-bench", "Run benchmarks");
+    run_bench_step.dependOn(&run_bench.step);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -136,12 +139,6 @@ pub fn build(b: *std.Build) void {
     // By making the run step depend on the default step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     run_cmd.step.dependOn(b.getInstallStep());
-
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
 
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to

@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const RandomGen = struct {
+pub const RandomGen = struct {
     ctx: *anyopaque,
 
     getNextRandomU32Fn: *const fn (ctx: *anyopaque) u32,
@@ -28,7 +28,7 @@ const RandomGen = struct {
 
 const F32_SCALE: f32 = std.math.pow(f32, 2.0, -24.0);
 
-const Pcgrng = struct {
+pub const Pcgrng = struct {
     state: u64,
 
     const MULTIPLIER: u64 = 6364136223846793005;
