@@ -256,3 +256,169 @@ pub fn PcgrngSimd(comptime lane_count: usize) type {
         }
     };
 }
+
+pub const PcgrngSimd4 = PcgrngSimd(4);
+pub const PcgrngSimd8 = PcgrngSimd(8);
+pub const PcgrngSimd16 = PcgrngSimd(16);
+
+pub const RandomDist = struct {
+    ctx: *anyopaque,
+
+    getNextRandomF32: *const fn (ctx: *anyopaque) f32,
+    fillRandomF32: *const fn (ctx: *anyopaque, buf: []f32) void,
+};
+
+pub const RandomNormal2 = struct {
+    const Self = @This();
+
+    rng: *RandomGen,
+    mu: f32,
+    sd: f32,
+
+    pub fn init() Self {}
+
+    fn randomVariate(self: *Self) [2]f32 {
+        var val = [2]f32{ 0, 0 };
+        self.oneSample(&val);
+        return val;
+    }
+
+    fn oneSample(self: *Self, out: *[2]f32) void {
+        const u1_ = @max(self.rng.getNextRandom(f32), std.math.floatEps(f32));
+        const u2_ = self.rng.getNextRandom(f32);
+        const r = @sqrt(-2.0 * @log(u1_));
+        const theta = 2.0 * std.math.pi * u2_;
+        out[0] = self.mu + self.sd * r * @cos(theta);
+        out[1] = self.mu + self.sd * r * @sin(theta);
+    }
+
+    fn sampleIntoArray(self: *Self, out_buf: []f32) void {
+        var val = [2]f32{ 0, 0 };
+        var i: usize = 0;
+        while (i + 1 < out_buf.len) : (i += 2) {
+            self.oneSample(&val);
+            out_buf[i] = val[0];
+            out_buf[i + 1] = val[1];
+        }
+        if (i < out_buf.len) {
+            self.oneSample(&val);
+            out_buf[i] = val[0];
+        }
+    }
+
+    pub fn randomDist(self: *Self) RandomDist {
+        return .{
+            .ctx = self,
+            .getNextRandomF32 = undefined,
+            .fillRandomF32 = undefined,
+        };
+    }
+};
+
+pub fn RandomNormal(comptime Rng: type) type {
+    return struct {
+        const Self = @This();
+        rng: *RandomGen,
+        mu: f32,
+        sd: f32,
+
+        pub fn randomDist(self: *Self) RandomDist {
+            return .{
+                .ctx = self,
+                .getNextRandomF32 = struct {
+                    fn call(ctx: *anyopaque) f32 {
+                        const norm: *Self = @ptrCast(@alignCast(ctx));
+                        return norm.getNextRandomF32();
+                    }
+                }.call,
+                .fillRandomF32 = struct {
+                    fn call(ctx: *anyopaque, out_buf: []f32) f32 {
+                        const norm: *Self = @ptrCast(@alignCast(ctx));
+                        return norm.fillArray(out_buf);
+                    }
+                }.call,
+            };
+        }
+
+        fn getNextRandomF32(self: *Self) f32 {
+            var ret: f32 = 0.0;
+            switch (Rng) {
+                Pcgrng => {
+                    ret = self.mu;
+                },
+                PcgrngSimd4 => {
+                    ret = self.mu;
+                },
+                PcgrngSimd8 => {
+                    ret = self.mu;
+                },
+                PcgrngSimd16 => {
+                    ret = self.mu;
+                },
+                else => @compileError("unsupported rng"),
+            }
+            return ret;
+        }
+
+        fn fillArray(self: *Self, out_buf: []f32) void {
+            const n = out_buf.len;
+            switch (Rng) {
+                Pcgrng => {
+                    for (0..n) |i| {
+                        out_buf[i] = self.getNextRandomF32();
+                    }
+                },
+                PcgrngSimd4 => {},
+                PcgrngSimd8 => {},
+                PcgrngSimd16 => {},
+                else => @compileError("unsupported rng"),
+            }
+        }
+    };
+}
+
+test "Random normals" {
+    var rng = Pcgrng.init(1232134);
+    var randomGen = rng.randomGen();
+    var randomNormal_ = RandomNormal(Pcgrng){
+        .rng = &randomGen,
+        .mu = 0.0,
+        .sd = 320.0,
+    };
+    var randomNormal = randomNormal_.randomDist();
+
+    var gpa = std.heap.DebugAllocator(.{}){};
+    var alloc = gpa.allocator();
+    const arr2 = try alloc.alloc(f32, 10_000_000);
+    defer alloc.free(arr2);
+    randomNormal.fillRandomF32(arr2);
+    const stats = meanAndSd(arr2);
+
+    std.debug.print("mean = {d}\n", .{stats.mean});
+    std.debug.print("sd   = {d}\n", .{stats.sd});
+}
+
+fn meanAndSd(data: []const f32) struct { mean: f64, sd: f64 } {
+    var mean: f64 = 0.0;
+    var m2: f64 = 0.0;
+    var n: u64 = 0;
+
+    for (data) |x| {
+        n += 1;
+
+        const x64: f64 = x;
+        const delta = x64 - mean;
+        mean += delta / @as(f64, @floatFromInt(n));
+        const delta2 = x64 - mean;
+
+        m2 += delta * delta2;
+    }
+
+    const nf: f64 = @floatFromInt(n);
+    const variance = m2 / nf;
+
+    return .{
+        .mean = mean,
+        .sd = @sqrt(variance),
+    };
+}

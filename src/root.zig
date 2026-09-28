@@ -2,3 +2,4 @@
 const std = @import("std");
 
 pub const rand = @import("pcg_rand.zig");
+pub const matrix = @import("matrix.zig");
